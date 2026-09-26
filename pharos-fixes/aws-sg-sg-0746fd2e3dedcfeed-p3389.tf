@@ -1,26 +1,32 @@
-# IMPORTANT: Replace the cidr_blocks values below with your organization's
-# trusted IP ranges (e.g., corporate VPN CIDR, bastion host IP, or AWS VPN endpoint).
-# DO NOT use 0.0.0.0/0 for RDP access. Example trusted CIDRs are placeholders only.
+# IMPORTANT: Replace the cidr_blocks in the allowed_rdp_cidrs local with your organization's
+# specific trusted IP ranges (e.g., corporate VPN CIDR, bastion host IP, office egress IPs).
+# DO NOT leave 0.0.0.0/0 in the replacement rule. If RDP must be allowed, use a VPN or
+# AWS Systems Manager Session Manager instead of direct RDP exposure.
+
+locals {
+  # REPLACE THESE with your actual trusted CIDR ranges
+  # Examples: corporate VPN, office IP, bastion host
+  allowed_rdp_cidrs = [
+    "10.0.0.0/8",       # Internal VPC/private network range (adjust to your VPC CIDR)
+    # "203.0.113.50/32" # Example: specific office/VPN egress IP (uncomment and set real IP)
+  ]
+}
 
 resource "aws_security_group" "cybertalents_production_powerbi_sg" {
   name        = "cybertalents-production-powerbi-sg"
-  description = "Security group for PowerBI - RDP restricted to trusted IPs only"
+  description = "Security group for PowerBI production instance - RDP restricted to trusted IPs only"
   vpc_id      = "vpc-00d3e684759e4bfc6"
 
-  # REMEDIATION: RDP access restricted to trusted corporate IP ranges only.
-  # Replace 203.0.113.0/24 with your actual trusted CIDR(s) — e.g., VPN gateway IP,
-  # corporate egress IP, or AWS Client VPN endpoint subnet.
+  # RDP access restricted to trusted CIDRs only - NO public internet access
   ingress {
-    description = "RDP from trusted corporate network only"
+    description = "RDP from trusted internal/VPN IPs only"
     from_port   = 3389
     to_port     = 3389
     protocol    = "tcp"
-    cidr_blocks = ["203.0.113.0/24"]  # REPLACE with your trusted CIDR range(s)
+    cidr_blocks = local.allowed_rdp_cidrs
   }
 
-  # Retain any other existing ingress rules as needed (e.g., HTTPS, custom app ports)
-  # Add them here explicitly to avoid Terraform drift.
-
+  # Preserve any existing legitimate egress rules
   egress {
     description = "Allow all outbound traffic"
     from_port   = 0
@@ -37,7 +43,18 @@ resource "aws_security_group" "cybertalents_production_powerbi_sg" {
     ManagedBy          = "Terraform"
     MigratedFrom       = "015061128280"
     OriginalInstanceId = "i-01646fd2cd65e450f"
-    RemediatedBy       = "FinOps-SecurityRemediation"
-    RemediationDate    = "2025-01-01"
+    RemediatedOn       = "2025-01-01"
+    RemediationReason  = "CriticalSecurity-RDPPublicExposure"
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
+
+# RECOMMENDED ALTERNATIVE: Use AWS Systems Manager Session Manager for remote access
+# This eliminates the need for RDP/port 3389 entirely
+# resource "aws_iam_role_policy_attachment" "ssm_policy" {
+#   role       = aws_iam_role.ec2_role.name
+#   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+# }
